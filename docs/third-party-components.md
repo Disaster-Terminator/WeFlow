@@ -1,7 +1,13 @@
 # 第三方可插拔组件接口说明
 
-使用 `pnpm run build:windows` 构建的 Windows x64 安装包附带 WCDB 读取 DLL、DAT 图片插件和
-WeLive 批量导出程序。构建需要 PowerShell 7、x64 MinGW-w64 GCC 和已安装的项目依赖。
+Windows x64 安装包附带 WCDB 读取 DLL、DAT 图片插件和 WeLive 批量导出程序。
+构建需要 PowerShell 7 和 x64 MinGW-w64 GCC。仓库使用 `package-lock.json` 锁定依赖版本。
+
+```powershell
+npm ci --legacy-peer-deps
+npm run build:windows
+```
+
 构建脚本校验源码依赖的 SHA-256，然后将三个组件编译到 `resources/native/win32-x64`。
 
 在安装了 Node.js 24 的 Windows x64 环境中，可以运行以下命令，生成合成 SQLCipher 数据并验证读取、
