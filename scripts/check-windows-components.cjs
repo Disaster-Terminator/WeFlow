@@ -57,10 +57,11 @@ async function runWorker(entry, workerData, selectResult, request) {
   }
 }
 
-async function checkInstalledWorkers() {
+async function checkBuiltWorkers() {
   const archive = path.join(resources, '..', 'app.asar')
-  if (!fs.existsSync(archive)) return
-  const workerDir = path.join(archive, 'dist-electron')
+  const installed = fs.existsSync(archive)
+  const workerDir = installed ? path.join(archive, 'dist-electron') : path.join(root, 'dist-electron')
+  if (!fs.existsSync(workerDir)) return
   const userDataPath = path.join(fixture, 'profile')
   const replies = new Map()
   await runWorker(path.join(workerDir, 'wcdbWorker.js'), {}, (message) => {
@@ -106,7 +107,7 @@ async function checkInstalledWorkers() {
   const imageFile = files.find((file) => file.endsWith('.png'))
   assert.ok(imageFile)
   assert.deepEqual(fs.readFileSync(path.join(formattedDir, imageFile)), media)
-  console.log('Installed Electron database, image and formatted two-session export workers passed.')
+  console.log(`${installed ? 'Installed' : 'Built'} Electron database, image and formatted two-session export workers passed.`)
 }
 
 async function main() {
@@ -195,10 +196,10 @@ async function main() {
     if (index === 0) assert.deepEqual(fs.readFileSync(rows[1].media_path), media)
   }
   console.log('Encrypted session/message reads, cursor, DAT decoding and two-session export manifests passed.')
-  await checkInstalledWorkers()
+  await checkBuiltWorkers()
 }
 
 main().catch((error) => {
   console.error(error)
   process.exitCode = 1
-}).finally(() => fs.rmSync(fixture, { recursive: true, force: true }))
+}).finally(() => fs.rmSync(fixture, { recursive: true, force: true, maxRetries: 4 }))

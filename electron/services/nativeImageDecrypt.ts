@@ -2,147 +2,28 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { Worker } from 'worker_threads'
 import { ConfigService } from './config'
-import { bundledWindowsComponent } from './bundledComponents'
+import { decryptDatWithAddon, encryptDatWithAddon, resolveNativeAddonLocation, shouldEnableNative, type NativeDatMeta } from './imageNativeAddon'
 
-type NativeDecryptResult = {
-  data: Buffer
-  ext: string
-  isWxgf?: boolean
-  is_wxgf?: boolean
-  version?: number
-  aesSize?: number
-  aes_size?: number
-  xorSize?: number
-  xor_size?: number
-  rawSize?: number
-  raw_size?: number
-  flag?: number
-}
-
-export type NativeDatMeta = {
-  version?: number
-  aesSize?: number
-  aes_size?: number
-  xorSize?: number
-  xor_size?: number
-  rawSize?: number
-  raw_size?: number
-  flag?: number
-}
-
-type NativeAddon = {
-  decryptDatNative: (inputPath: string, xorKey: number, aesKey?: string) => NativeDecryptResult
-  encryptDatNative?: (inputPath: string, xorKey: number, aesKey?: string, meta?: NativeDatMeta) => Buffer
-}
-
-let cachedAddon: NativeAddon | null | undefined
-
-function shouldEnableNative(): boolean {
-  return process.env.WEFLOW_IMAGE_NATIVE !== '0'
-}
-
-function expandAsarCandidates(filePath: string): string[] {
-  if (!filePath.includes('app.asar') || filePath.includes('app.asar.unpacked')) {
-    return [filePath]
-  }
-  return [filePath.replace('app.asar', 'app.asar.unpacked'), filePath]
-}
-
-let addonPathOverride: string | null | undefined
-
-export function setAddonPathOverride(path: string | null | undefined): void {
-  addonPathOverride = path && path.trim() ? path.trim() : null
-}
+export type { NativeDatMeta } from './imageNativeAddon'
 
 function getConfiguredAddonPath(): string | null {
-  if (addonPathOverride !== undefined) return addonPathOverride
   try {
-    const configured = String(new ConfigService().get('imageNativeAddonPath') || '').trim()
-    return configured || null
+    return String(new ConfigService().get('imageNativeAddonPath') || '').trim() || null
   } catch {
     return null
   }
-}
-
-function getAddonCandidates(): string[] {
-  const configured = getConfiguredAddonPath() || bundledWindowsComponent('image-decrypt.node')
-  if (!configured) return []
-  return Array.from(new Set(expandAsarCandidates(configured)))
-}
-
-function loadAddon(): NativeAddon | null {
-  if (!shouldEnableNative()) return null
-  if (cachedAddon !== undefined) return cachedAddon
-
-  for (const candidate of getAddonCandidates()) {
-    if (!existsSync(candidate)) continue
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const addon = require(candidate) as NativeAddon
-      if (addon && typeof addon.decryptDatNative === 'function') {
-        cachedAddon = addon
-        return addon
-      }
-    } catch {
-      // try next candidate
-    }
-  }
-
-  cachedAddon = null
-  return null
 }
 
 export function nativeAddonLocation(): string | null {
-  for (const candidate of getAddonCandidates()) {
-    if (existsSync(candidate)) return candidate
-  }
-  return null
+  return resolveNativeAddonLocation(getConfiguredAddonPath())
 }
 
-export function decryptDatViaNative(
-  inputPath: string,
-  xorKey: number,
-  aesKey?: string
-): { data: Buffer; ext: string; isWxgf: boolean; meta: NativeDatMeta } | null {
-  const addon = loadAddon()
-  if (!addon) return null
-
-  try {
-    const result = addon.decryptDatNative(inputPath, xorKey, aesKey)
-    const isWxgf = Boolean(result?.isWxgf ?? result?.is_wxgf)
-    if (!result || !Buffer.isBuffer(result.data)) return null
-    const rawExt = typeof result.ext === 'string' && result.ext.trim()
-      ? result.ext.trim().toLowerCase()
-      : ''
-    const ext = rawExt ? (rawExt.startsWith('.') ? rawExt : `.${rawExt}`) : ''
-    const meta: NativeDatMeta = {
-      version: result.version,
-      aes_size: result.aes_size ?? result.aesSize,
-      xor_size: result.xor_size ?? result.xorSize,
-      raw_size: result.raw_size ?? result.rawSize,
-      flag: result.flag
-    }
-    return { data: result.data, ext, isWxgf, meta }
-  } catch {
-    return null
-  }
+export function decryptDatViaNative(inputPath: string, xorKey: number, aesKey?: string) {
+  return decryptDatWithAddon(getConfiguredAddonPath(), inputPath, xorKey, aesKey)
 }
 
-export function encryptDatViaNative(
-  inputPath: string,
-  xorKey: number,
-  aesKey?: string,
-  meta?: NativeDatMeta
-): Buffer | null {
-  const addon = loadAddon()
-  if (!addon || typeof addon.encryptDatNative !== 'function') return null
-
-  try {
-    const result = addon.encryptDatNative(inputPath, xorKey, aesKey, meta)
-    return Buffer.isBuffer(result) ? result : null
-  } catch {
-    return null
-  }
+export function encryptDatViaNative(inputPath: string, xorKey: number, aesKey?: string, meta?: NativeDatMeta) {
+  return encryptDatWithAddon(getConfiguredAddonPath(), inputPath, xorKey, aesKey, meta)
 }
 
 // ─── Worker 化解密：原生解密是同步 CPU/IO 调用，滚动时批量触发会阻塞主线程 ───

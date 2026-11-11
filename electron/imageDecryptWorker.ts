@@ -1,8 +1,7 @@
 import { parentPort, workerData } from 'worker_threads'
-import { decryptDatViaNative, nativeAddonLocation, setAddonPathOverride } from './services/nativeImageDecrypt'
+import { decryptDatWithAddon, resolveNativeAddonLocation } from './services/imageNativeAddon'
 
-// worker_threads 中 electron-store 可能不可用，第三方插件路径由主线程通过 workerData 显式传入
-setAddonPathOverride(workerData?.imageNativeAddonPath || null)
+const addonPath = workerData?.imageNativeAddonPath || null
 
 type DecryptRequest = {
   id: number
@@ -14,10 +13,10 @@ type DecryptRequest = {
 parentPort?.on('message', (req: DecryptRequest) => {
   const { id, datPath, xorKey, aesKey } = req
   try {
-    const result = decryptDatViaNative(datPath, xorKey, aesKey)
+    const result = decryptDatWithAddon(addonPath, datPath, xorKey, aesKey)
     if (!result) {
       // addonMissing 让主线程直接放弃 worker 路径，避免每次解密都白跑一次线程往返
-      parentPort?.postMessage({ id, ok: false, addonMissing: !nativeAddonLocation() })
+      parentPort?.postMessage({ id, ok: false, addonMissing: !resolveNativeAddonLocation(addonPath) })
       return
     }
     // 拷贝出独立 ArrayBuffer 后转移所有权，避免结构化克隆再复制一次

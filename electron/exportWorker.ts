@@ -686,27 +686,17 @@ async function runContactExport() {
     appPath: config.resourcesPath ? require('path').dirname(config.resourcesPath) : __dirname,
     isPackaged: config.isPackaged
   })
-  const result = await contactExportService.exportContacts(
+  return contactExportService.exportContacts(
     String(config.outputDir || ''),
     config.options || {}
   )
-
-  flushProgress()
-  flushCreatedPaths()
-
-  parentPort?.postMessage({
-    type: 'export:result',
-    data: result
-  })
 }
 
 async function run() {
-  if (config.mode === 'contacts') {
-    await runContactExport()
-    return
-  }
+  const { wcdbService } = await import('./services/wcdbService')
+  const result = await (config.mode === 'contacts' ? runContactExport() : runWeliveEngine())
+    .finally(() => wcdbService.shutdown())
 
-  const result = await runWeliveEngine()
   flushProgress()
   flushCreatedPaths()
   parentPort?.postMessage({
