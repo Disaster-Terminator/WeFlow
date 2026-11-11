@@ -2658,7 +2658,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className="form-group">
         <label>第三方组件路径</label>
         <span className="form-hint">
-          WeFlow 不再内置数据解密相关的原生组件，以下四项均需自行提供符合接口约定的实现，留空则对应功能返回"未配置"提示
+          Windows x64 安装版附带数据库读取、图片解密和批量导出组件。填写路径可替换对应组件。请在数据库设置中填写已有密钥。
         </span>
       </div>
 
@@ -2667,7 +2667,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         <span className="form-hint">用于读取目标应用数据库的动态库文件（.dll/.so/.dylib）</span>
         <input
           type="text"
-          placeholder="未配置"
+          placeholder="留空使用内置组件（如可用）"
           value={wcdbLibPath}
           onChange={(e) => {
             const value = e.target.value
@@ -2696,10 +2696,10 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
       <div className="form-group">
         <label>媒体解密插件路径</label>
-        <span className="form-hint">用于解密语音/图片/视频的 Node 原生插件（.node）</span>
+        <span className="form-hint">用于解密 DAT 图片的 Node 原生插件（.node）</span>
         <input
           type="text"
-          placeholder="未配置"
+          placeholder="留空使用内置组件（如可用）"
           value={imageNativeAddonPath}
           onChange={(e) => {
             const value = e.target.value
@@ -2715,7 +2715,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         <span className="form-hint">用于批量原始导出的外部可执行文件</span>
         <input
           type="text"
-          placeholder="未配置"
+          placeholder="留空使用内置组件（如可用）"
           value={welivePath}
           onChange={(e) => {
             const value = e.target.value

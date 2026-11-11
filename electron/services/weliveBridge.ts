@@ -1,5 +1,6 @@
 import { spawn } from 'child_process'
 import { chmodSync, existsSync } from 'fs'
+import { bundledWindowsComponent } from './bundledComponents'
 
 export interface WeliveRawExportManifest {
   path: string
@@ -125,16 +126,15 @@ const formatDiagnostics = (diagnostics: Record<string, unknown>) => {
   return parts.length > 0 ? `[welive-diagnostics] ${parts.join(' ')}` : ''
 }
 
-/**
- * WeLive 是用户自备的外部批量导出引擎（第三方可插拔实现），不再随应用内置查找。
- * 仅认调用方显式传入的 welivePath。
- */
-export function resolveWeliveExecutable(_resourcesPath: string, _appPath?: string): string | null {
-  return null
+export function resolveWeliveExecutable(resourcesPath: string): string | null {
+  return bundledWindowsComponent('welive.exe', resourcesPath)
 }
 
 export async function runWeliveExport(options: RunWeliveExportOptions): Promise<WeliveExportResult> {
-  const exe = options.welivePath && existsSync(options.welivePath) ? options.welivePath : null
+  const configured = options.welivePath?.trim()
+  const exe = configured
+    ? (existsSync(configured) ? configured : null)
+    : resolveWeliveExecutable(options.resourcesPath)
   if (!exe) {
     return {
       success: false,

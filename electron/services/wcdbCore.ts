@@ -4,6 +4,7 @@ import { appendFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import * as fzstd from 'fzstd'
 import { expandHomePath } from '../utils/pathUtils'
+import { bundledWindowsComponent } from './bundledComponents'
 
 //数据服务初始化错误信息，用于帮助用户诊断问题
 let lastDllInitError: string | null = null
@@ -393,9 +394,6 @@ export class WcdbCore {
 
 
 
-  /**
-   * WCDB 原生库路径：完全由外部用户配置提供（第三方可插拔实现），不再内置查找/校验来源。
-   */
   private libPath: string | null = null
 
   setLibPath(libPath: string | null | undefined): void {
@@ -406,7 +404,7 @@ export class WcdbCore {
     const envDllPath = process.env.WCDB_DLL_PATH
     if (this.libPath) return this.libPath
     if (envDllPath && envDllPath.length > 0) return envDllPath
-    return ''
+    return bundledWindowsComponent('wcdb.dll', this.resourcesPath) || ''
   }
 
   private formatInitProtectionError(code: number): string {

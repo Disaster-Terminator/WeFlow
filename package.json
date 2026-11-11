@@ -21,6 +21,7 @@
     "typecheck:electron": "tsc --noEmit -p tsconfig.node.json",
     "typecheck": "npm run typecheck:renderer && npm run typecheck:electron",
     "build": "npm run typecheck && node scripts/clean-dist-electron.cjs && vite build && electron-builder",
+    "build:windows": "pwsh -NoProfile -File scripts/build-windows-components.ps1 && npm run typecheck && node scripts/clean-dist-electron.cjs && vite build && electron-builder --win nsis --x64 --publish never",
     "preview": "vite preview",
     "electron:dev": "node scripts/prepare-electron-runtime.cjs && vite --mode electron",
     "electron:build": "npm run build"

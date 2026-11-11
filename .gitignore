@@ -28,6 +28,7 @@ test/
 
 # Build output
 out
+/resources/native/win32-x64/
 release
 tmp/
 

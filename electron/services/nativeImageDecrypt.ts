@@ -2,6 +2,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { Worker } from 'worker_threads'
 import { ConfigService } from './config'
+import { bundledWindowsComponent } from './bundledComponents'
 
 type NativeDecryptResult = {
   data: Buffer
@@ -47,11 +48,6 @@ function expandAsarCandidates(filePath: string): string[] {
   return [filePath.replace('app.asar', 'app.asar.unpacked'), filePath]
 }
 
-/**
- * 媒体解密原生插件（wedecrypt）路径：完全由外部用户配置提供（第三方可插拔实现），
- * 不再内置查找/校验来源。子 Worker 线程里 electron-store 可能不可用，因此这里既支持
- * 主线程直接读取 ConfigService，也支持子线程通过 setAddonPathOverride 接收显式传入的路径。
- */
 let addonPathOverride: string | null | undefined
 
 export function setAddonPathOverride(path: string | null | undefined): void {
@@ -69,7 +65,7 @@ function getConfiguredAddonPath(): string | null {
 }
 
 function getAddonCandidates(): string[] {
-  const configured = getConfiguredAddonPath()
+  const configured = getConfiguredAddonPath() || bundledWindowsComponent('image-decrypt.node')
   if (!configured) return []
   return Array.from(new Set(expandAsarCandidates(configured)))
 }
@@ -190,7 +186,7 @@ function ensureDecryptWorker(): Worker | null {
 
   try {
     const worker = new Worker(workerPath, {
-      workerData: { resourcesPath: process.resourcesPath || '', imageNativeAddonPath: getConfiguredAddonPath() || '' }
+      workerData: { imageNativeAddonPath: nativeAddonLocation() || '' }
     })
     worker.on('message', (msg: { id: number; ok: boolean; addonMissing?: boolean; data?: ArrayBuffer; ext?: string; isWxgf?: boolean; meta?: NativeDatMeta }) => {
       const job = pendingJobs.get(msg.id)

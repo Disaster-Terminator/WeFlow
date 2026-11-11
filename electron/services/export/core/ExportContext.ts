@@ -4363,9 +4363,14 @@ export class ExportContext {
             const localType = this.getIntFromRow(row, [
               'local_type', 'localType', 'type', 'msg_type', 'msgType', 'WCDB_CT_local_type'
             ], 1)
-            const content = this.getRowField(row, [
+            const rawContent = this.getRowField(row, [
               'message_content', 'messageContent', 'msg_content', 'msgContent', 'strContent', 'content', 'WCDB_CT_message_content'
             ]) ?? ''
+            const compressedContent = row.compress_content
+            const zstdHex = (value: unknown): value is string =>
+              typeof value === 'string' && /^28b52ffd/i.test(value) && looksLikeHex(value)
+            const encoded = zstdHex(compressedContent) ? compressedContent : zstdHex(rawContent) ? rawContent : null
+            const content = encoded ? decodeBinaryContent(Buffer.from(encoded, 'hex')) || rawContent : rawContent
             const rowFileHints = this.getFileAppMessageHints(row)
             const allowFileProbe = fileOnlyMediaFilter && this.hasFileAppMessageHints(row)
             if (mediaTypeFilter && !mediaTypeFilter.has(localType) && !allowFileProbe) continue

@@ -75,6 +75,7 @@ function makeCore(options = {}) {
     koffi,
     fzstd: { decompress: () => { throw new Error('Unexpected compressed fixture') } },
     '../utils/pathUtils': { expandHomePath: (value) => value },
+    './bundledComponents': { bundledWindowsComponent: () => null },
     path: require('node:path'),
     fs: require('node:fs'),
     'fs/promises': require('node:fs/promises'),

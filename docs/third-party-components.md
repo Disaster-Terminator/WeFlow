@@ -1,10 +1,23 @@
 # 第三方可插拔组件接口说明
 
-WeFlow 不再内置任何用于读取/解密本地数据的原生组件。以下四类能力全部由用户在
-「设置 -> 数据库 -> 第三方组件路径」中自行配置一个可执行文件/动态库/插件路径，
-应用只按下述协议与其交互，不对其来源、签名或实现方式做任何校验。
+使用 `pnpm run build:windows` 构建的 Windows x64 安装包附带 WCDB 读取 DLL、DAT 图片插件和
+WeLive 批量导出程序。构建需要 PowerShell 7、x64 MinGW-w64 GCC 和已安装的项目依赖。
+构建脚本校验源码依赖的 SHA-256，然后将三个组件编译到 `resources/native/win32-x64`。
 
-留空或指向的文件不存在时，对应功能会直接返回"未配置"错误，不会有任何降级或替代实现。
+在安装了 Node.js 24 的 Windows x64 环境中，可以运行以下命令，生成合成 SQLCipher 数据并验证读取、
+图片解密和批量导出清单。
+
+```powershell
+pwsh -NoProfile -File scripts/build-windows-components.ps1 -TestTools
+node scripts/check-windows-components.cjs
+```
+
+「设置 → 数据库 → 第三方组件路径」仍可指定符合下述接口的实现。路径留空时会使用已安装的对应组件。
+读取加密数据需要用户填写已有的密钥。密钥获取工具需单独配置。
+
+内置 DLL 提供只读会话、消息、计数和消息游标，支持 SQLite 和使用 32 字节原始密钥的 SQLCipher 4。
+内置插件支持 XOR 和分段 AES/XOR DAT 图片。WeLive 生成原始 JSONL 及其行数、字节数和媒体失败计数，
+从账号媒体目录和表情缓存复制可定位的媒体，并解密 DAT 图片。具体能力取决于数据库结构和本地文件的完整性。
 
 ## 1. WCDB 实现（`wcdbLibPath`）
 
@@ -147,7 +160,7 @@ JSON 载荷/出参的字段命名可参照 `electron/services/wcdbCore.ts` 里
 }
 ```
 
-参照原始 `Wedecrypt/` Rust 工程（`napi`/`napi-derive` + `cdylib`）实现即可复用其思路。
+Windows x64 内置实现位于 `native/image_addon.cpp`，使用 Node-API 和 Windows CNG。
 
 ## 3. WeLive 批量导出引擎（`welivePath`）
 
