@@ -47,7 +47,7 @@ async function runWorker(entry, workerData, selectResult, request) {
     return await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`Worker timed out: ${entry}`)), 30_000)
       worker.on('message', (message) => {
-        if (message.type === 'export:error') reject(new Error(message.error))
+        if (message.type === 'export:error' || message.type === 'annualReport:error') reject(new Error(message.error))
         if (selectResult(message)) resolve(message)
       })
       worker.once('error', reject)
@@ -112,7 +112,14 @@ async function checkBuiltWorkers() {
   const imageFile = files.find((file) => file.endsWith('.png'))
   assert.ok(imageFile)
   assert.deepEqual(fs.readFileSync(path.join(formattedDir, imageFile)), media)
-  console.log(`${installed ? 'Installed' : 'Built'} Electron database, image and formatted two-session export workers passed.`)
+  const annual = await runWorker(path.join(workerDir, 'annualReportWorker.js'), {
+    year, dbPath: path.dirname(account), decryptKey: key, myAccountId: 'wxid_synthetic_me',
+    resourcesPath: resources, userDataPath
+  }, (message) => message.type === 'annualReport:result')
+  assert.equal(annual.data.success, true, annual.data.error)
+  assert.equal(annual.data.data.year, year)
+  assert.equal(annual.data.data.totalMessages, 2)
+  console.log(`${installed ? 'Installed' : 'Built'} Electron database, image, annual report and formatted export workers passed.`)
 }
 
 async function main() {

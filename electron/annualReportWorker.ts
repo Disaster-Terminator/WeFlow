@@ -1,6 +1,5 @@
 import { parentPort, workerData } from 'worker_threads'
 import { wcdbService } from './services/wcdbService'
-import { annualReportService } from './services/annualReportService'
 
 interface WorkerConfig {
   year: number
@@ -18,12 +17,17 @@ process.env.WEFLOW_WORKER = '1'
 if (config.resourcesPath) {
   process.env.WCDB_RESOURCES_PATH = config.resourcesPath
 }
+if (config.userDataPath) {
+  process.env.WEFLOW_CONFIG_CWD = config.userDataPath
+  process.env.WEFLOW_USER_DATA_PATH = config.userDataPath
+}
 
 wcdbService.setPaths(config.resourcesPath || '', config.userDataPath || '')
 wcdbService.setLibPath(config.wcdbLibPath || '')
 wcdbService.setLogEnabled(config.logEnabled === true)
 
 async function run() {
+  const { annualReportService } = await import('./services/annualReportService')
   const result = await annualReportService.generateReportWithConfig({
     year: config.year,
     dbPath: config.dbPath,

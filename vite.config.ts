@@ -48,7 +48,7 @@ const handleElectronMainOnStart = async (options: { startup: () => Promise<boole
   await options.startup()
 }
 
-const exportWorkerElectronShimPlugin = () => {
+const electronWorkerShimPlugin = () => {
   const virtualId = 'virtual:weflow-export-worker-electron'
   const resolvedVirtualId = `\0${virtualId}`
 
@@ -195,6 +195,7 @@ export default defineConfig({
         entry: 'electron/annualReportWorker.ts',
         onstart: handleElectronOnStart,
         vite: {
+          plugins: [electronWorkerShimPlugin()],
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
@@ -301,7 +302,7 @@ export default defineConfig({
         entry: 'electron/exportWorker.ts',
         onstart: handleElectronOnStart,
         vite: {
-          plugins: [exportWorkerElectronShimPlugin()],
+          plugins: [electronWorkerShimPlugin()],
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
@@ -338,7 +339,7 @@ export default defineConfig({
         entry: 'electron/agentRunWorker.ts',
         onstart: handleElectronOnStart,
         vite: {
-          plugins: [exportWorkerElectronShimPlugin(), copyJiebaNodeWasmPlugin()],
+          plugins: [electronWorkerShimPlugin(), copyJiebaNodeWasmPlugin()],
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
@@ -367,7 +368,7 @@ export default defineConfig({
         entry: 'electron/agentTitleWorker.ts',
         onstart: handleElectronOnStart,
         vite: {
-          plugins: [exportWorkerElectronShimPlugin()],
+          plugins: [electronWorkerShimPlugin()],
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
