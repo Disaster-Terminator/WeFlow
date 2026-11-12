@@ -35,7 +35,7 @@ async function run() {
         data: { status, progress }
       })
     }
-  })
+  }).finally(() => wcdbService.shutdown())
 
   parentPort?.postMessage({ type: 'annualReport:result', data: result })
 }

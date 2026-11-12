@@ -6,6 +6,7 @@
 #include <map>
 #include <mutex>
 #include "account.hpp"
+#include "read_features.hpp"
 
 using namespace wf;
 
@@ -124,4 +125,59 @@ WCDB int wcdb_fetch_message_batch(int64_t handle, int64_t cursor, char** output,
 
 WCDB int wcdb_close_message_cursor(int64_t handle, int64_t cursor) {
     return call([&] { accounts.at(handle).cursors.erase(cursor); });
+}
+
+WCDB int wcdb_get_available_years(int64_t handle, const char* ids, char** output) {
+    if (!ids || !output) return -1;
+    return call([&] { writeJson(availableYears(accounts.at(handle).account, sessionIds(ids)), output); });
+}
+
+WCDB int wcdb_get_annual_report_stats(int64_t handle, const char* ids, int begin, int end, char** output) {
+    if (!ids || !output) return -1;
+    return call([&] { writeJson(annualStats(accounts.at(handle).account, sessionIds(ids), begin, end), output); });
+}
+
+WCDB int wcdb_scan_media_stream(int64_t handle, const char* ids, int type, int begin, int end,
+    int limit, int offset, char** output, int* more) {
+    if (!ids || !output || !more || type < 0 || type > 2 || limit <= 0 || offset < 0) return -1;
+    return call([&] {
+        int hasMore;
+        auto rows = mediaPage(accounts.at(handle).account, sessionIds(ids), type, begin, end, limit, offset, hasMore);
+        writeJson(rows, output);
+        *more = hasMore;
+    });
+}
+
+WCDB int wcdb_get_sns_timeline(int64_t handle, int limit, int offset, const char* users, const char* keyword,
+    int begin, int end, char** output) {
+    if (!users || !keyword || !output || limit <= 0 || offset < 0) return -1;
+    return call([&] {
+        const Json filters = {{"users", *users ? Json(sessionIds(users)) : Json::array()},
+            {"keyword", keyword}, {"begin", begin}, {"end", end}, {"limit", limit}, {"offset", offset}};
+        writeJson(snsTimeline(accounts.at(handle).account, filters.dump()), output);
+    });
+}
+
+WCDB int wcdb_get_sns_usernames(int64_t handle, char** output) {
+    if (!output) return -1;
+    return call([&] {
+        Json names = Json::array();
+        for (const auto& row : accounts.at(handle).account.moments().query(
+            "SELECT DISTINCT user_name FROM SnsTimeLine WHERE user_name <> '' ORDER BY user_name")) {
+            names.push_back(row.at("user_name"));
+        }
+        writeJson(names, output);
+    });
+}
+
+WCDB int wcdb_get_sns_export_stats(int64_t handle, const char* accountId, char** output) {
+    if (!output) return -1;
+    return call([&] {
+        const std::string user = accountId ? accountId : "";
+        auto query = accounts.at(handle).account.moments().prepare(
+            "SELECT count(*) AS total_posts, count(DISTINCT NULLIF(user_name,'')) AS total_friends, "
+            "CASE WHEN ?1 = '' THEN NULL ELSE count(CASE WHEN user_name = ?1 THEN 1 END) END AS my_posts "
+            "FROM SnsTimeLine", &user);
+        writeJson(query.next(), output);
+    });
 }

@@ -187,6 +187,9 @@ if (parentPort) {
                 case 'getGroupStats':
                     result = await core.getGroupStats(payload.chatroomId, payload.beginTimestamp, payload.endTimestamp)
                     break
+                case 'supportsMyFootprintStats':
+                    result = core.supportsMyFootprintStats()
+                    break
                 case 'getMyFootprintStats':
                     result = await core.getMyFootprintStats(payload.options || {})
                     break

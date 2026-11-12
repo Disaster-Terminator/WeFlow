@@ -1310,15 +1310,17 @@ class SnsService {
 
         const enrichedTimeline = result.timeline.map((post: any) => {
             const contact = this.contactCache.get(contactCacheScope, post.username)
-            const isVideoPost = post.type === 15
             const rawXml = post.rawXml || ''
+            const xmlValue = (tag: string) => decodeXmlText(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i').exec(rawXml)?.[1] || '')
+            const type = post.type ?? (Number(xmlValue('contentStyle')) || undefined)
+            const isVideoPost = type === 15
             const videoKey = extractVideoKey(rawXml)
             const location = this.mergeLocation(
                 this.normalizeLocation((post as { location?: unknown }).location),
                 this.parseLocationFromXml(rawXml)
             )
 
-            const fixedMedia = (post.media || []).map((m: any) => ({
+            const fixedMedia = (post.media ?? this.parseMediaFromXml(rawXml).media).map((m: any) => ({
                 url: fixSnsUrl(m.url, m.token, isVideoPost),
                 thumb: fixSnsUrl(m.thumb, m.thumbToken || m.token, false),
                 md5: m.md5,
@@ -1356,9 +1358,15 @@ class SnsService {
 
             return {
                 ...post,
+                tid: post.tid || post.id,
+                type,
+                contentDesc: post.media === undefined ? decodeXmlText(post.contentDesc || '') : post.contentDesc,
+                linkTitle: post.linkTitle ?? (xmlValue('title') || undefined),
+                linkUrl: post.linkUrl ?? (xmlValue('contentUrl') || undefined),
                 avatarUrl: contact?.avatarUrl,
                 nickname: post.nickname || contact?.displayName || post.username,
                 media: fixedMedia,
+                likes: post.likes ?? this.parseLikesFromXml(rawXml),
                 comments: finalComments,
                 location
             }

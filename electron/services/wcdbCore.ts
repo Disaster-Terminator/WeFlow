@@ -3940,6 +3940,10 @@ export class WcdbCore {
     }
   }
 
+  supportsMyFootprintStats(): boolean {
+    return Boolean(this.wcdbGetMyFootprintStats)
+  }
+
   async getMyFootprintStats(options: {
     beginTimestamp?: number
     endTimestamp?: number

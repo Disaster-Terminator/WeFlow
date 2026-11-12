@@ -4008,23 +4008,28 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('sns:getTimeline', async (_, limit: number, offset: number, usernames?: string[], keyword?: string, startTime?: number, endTime?: number) => {
-    return snsService.getTimeline(limit, offset, usernames, keyword, startTime, endTime)
+    const connection = await chatService.connect()
+    return connection.success ? snsService.getTimeline(limit, offset, usernames, keyword, startTime, endTime) : connection
   })
 
   ipcMain.handle('sns:getSnsUsernames', async () => {
-    return snsService.getSnsUsernames()
+    const connection = await chatService.connect()
+    return connection.success ? snsService.getSnsUsernames() : connection
   })
 
   ipcMain.handle('sns:getUserPostCounts', async (_, options?: { preferCache?: boolean; forceRefresh?: boolean }) => {
-    return snsService.getUserPostCounts(options)
+    const connection = await chatService.connect()
+    return connection.success ? snsService.getUserPostCounts(options) : connection
   })
 
   ipcMain.handle('sns:getExportStats', async (_, options?: { allowTimelineFallback?: boolean; preferCache?: boolean; forceRefresh?: boolean }) => {
-    return snsService.getExportStats(options)
+    const connection = await chatService.connect()
+    return connection.success ? snsService.getExportStats(options) : connection
   })
 
   ipcMain.handle('sns:getExportStatsFast', async () => {
-    return snsService.getExportStatsFast()
+    const connection = await chatService.connect()
+    return connection.success ? snsService.getExportStatsFast() : connection
   })
 
   ipcMain.handle('sns:getUserPostStats', async (_, username: string) => {

@@ -19,12 +19,17 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'weflow-native-'))
 const account = path.join(fixture, '测试账号', 'wxid_synthetic_me')
 const sessionDb = path.join(account, 'db_storage', 'session', 'session.db')
 const messages = path.join(account, 'db_storage', 'message')
+const snsDb = path.join(account, 'db_storage', 'sns', 'sns.db')
 const ids = ['wxid_synthetic_friend', 'synthetic@chatroom']
+const year = 2025
+const day = new Date(year, 4, 16, 12).getTime() / 1000
+const imageMd5 = 'c'.repeat(32)
+const videoMd5 = 'a'.repeat(32)
 const media = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWNwbVro2rSQAUIBACX+BaHGJ5BXAAAAAElFTkSuQmCC', 'base64')
 const mediaDir = path.join(account, 'msg', 'attach')
-const dat = path.join(mediaDir, 'test.dat')
+const dat = path.join(mediaDir, imageMd5 + '.dat')
 const outputDir = path.join(fixture, 'output')
-const groupContent = zstdCompressSync(Buffer.from('Group message')).toString('hex')
+const groupContent = zstdCompressSync(Buffer.from('@Synthetic Group message')).toString('hex')
 
 function sqlite(file, sql) {
   const result = spawnSync(shell, [path.basename(file)], {
@@ -92,12 +97,12 @@ async function checkBuiltWorkers() {
     mode: 'sessions', sessionIds: ids, outputDir: formattedDir, resourcesPath: resources, userDataPath,
     dbPath: account, accountDir: account, myAccountId: 'wxid_synthetic_me', decryptKey: key,
     imageAesKey: aesKey, imageXorKey: xorKey, isPackaged: true,
-    options: { format: 'json', exportImages: true, sessionLayout: 'per-session' }
+    options: { format: 'json', exportImages: true, exportVideos: false, sessionLayout: 'per-session' }
   }, (message) => message.type === 'export:result')
   assert.equal(data.success, true, JSON.stringify(data))
   assert.equal(data.successCount, 2)
-  for (const [index, id] of ids.entries()) {
-    assert.equal(data.rawSessionStats[id].rows, index === 0 ? 2 : 1)
+  for (const id of ids) {
+    assert.equal(data.rawSessionStats[id].rows, 2)
     assert.equal(data.rawSessionStats[id].mediaFailures, 0)
   }
   const files = fs.readdirSync(formattedDir, { recursive: true })
@@ -113,20 +118,28 @@ async function checkBuiltWorkers() {
 async function main() {
   fs.mkdirSync(path.dirname(sessionDb), { recursive: true })
   fs.mkdirSync(messages, { recursive: true })
+  fs.mkdirSync(path.dirname(snsDb), { recursive: true })
   fs.mkdirSync(mediaDir, { recursive: true })
   sqlite(sessionDb, `CREATE TABLE SessionTable(username TEXT, sort_timestamp INTEGER);
-    INSERT INTO SessionTable VALUES ('${ids[0]}', 30), ('${ids[1]}', 20);`)
+    INSERT INTO SessionTable VALUES ('${ids[0]}', ${day + 30}), ('${ids[1]}', ${day + 20});`)
 
   const table = (id) => 'Msg_' + createHash('md5').update(id).digest('hex')
   const schema = (id) => `CREATE TABLE ${table(id)} (local_id INTEGER, server_id INTEGER,
     create_time INTEGER, sort_seq INTEGER, local_type INTEGER, real_sender_id INTEGER,
-    message_content TEXT, image_dat_name TEXT);`
+    message_content TEXT, image_dat_name TEXT, source TEXT);`
   const senders = "CREATE TABLE Name2Id(user_name TEXT); INSERT INTO Name2Id VALUES ('wxid_synthetic_me'), ('wxid_synthetic_friend');"
   sqlite(path.join(messages, 'message_0.db'), senders + schema(ids[0]) + schema(ids[1]) + `
-    INSERT INTO ${table(ids[0])} VALUES (1, 123456789123456789, 10, 10, 1, 2, '你好', NULL);
-    INSERT INTO ${table(ids[1])} VALUES (1, 21, 20, 20, 1, 1, x'${groupContent}', NULL);`)
+    INSERT INTO ${table(ids[0])} VALUES (1, 123456789123456789, ${day + 10}, 10, 1, 2, '你好', NULL, NULL);
+    INSERT INTO ${table(ids[1])} VALUES (1, 21, ${day + 20}, 20, 1, 2, x'${groupContent}', NULL,
+      '<msgsource><atuserlist><![CDATA[wxid_synthetic_me]]></atuserlist></msgsource>'),
+      (2, 22, ${day + 40}, 40, 43, 1, '<videomsg rawmd5="${videoMd5}"/>', NULL, NULL);`)
   sqlite(path.join(messages, 'message_1.db'), senders + schema(ids[0]) + `
-    INSERT INTO ${table(ids[0])} VALUES (2, 31, 30, 30, 3, 1, '<img/>', 'test.dat');`)
+    INSERT INTO ${table(ids[0])} VALUES (2, 31, ${day + 30}, 30, 3, 1, '<img md5="${imageMd5}"/>', '${imageMd5}.dat', NULL);`)
+  sqlite(snsDb, `CREATE TABLE SnsTimeLine(tid INTEGER PRIMARY KEY, user_name TEXT, content TEXT);
+    INSERT INTO SnsTimeLine VALUES (123456789123456789, '${ids[0]}',
+      '<TimelineObject><createTime>${day}</createTime><contentDesc>Synthetic photo</contentDesc><ContentObject><contentStyle>1</contentStyle></ContentObject></TimelineObject>'),
+    (33, 'wxid_synthetic_me',
+      '<TimelineObject><createTime>${day + 100}</createTime><contentDesc>Synthetic text</contentDesc></TimelineObject>');`)
 
   const header = Buffer.from([7, 8, 86, 50, 8, 7, 13, 0, 0, 0, 9, 0, 0, 0, 0])
   const cipher = createCipheriv('aes-128-ecb', aesKey, null)
@@ -166,6 +179,33 @@ async function main() {
     assert.equal(rows[1].server_id, '123456789123456789')
     assert.equal(rows[1].message_content, '你好')
     assert.equal((await core.getMessageCount(ids[0])).count, 2)
+    assert.deepEqual((await core.getAvailableYears(ids)).data, [year])
+    const stats = await core.getAnnualReportStats(ids, day, day + 59)
+    assert.deepEqual(stats.data, {
+      total: 4,
+      sessions: {
+        [ids[0]]: { sent: 1, received: 1, monthly: { 5: 2 } },
+        [ids[1]]: { sent: 1, received: 1, monthly: { 5: 2 } }
+      },
+      daily: { '2025-05-16': 4 }
+    })
+    assert.equal((await core.getAnnualReportStats(ids, day + 41, day + 59)).data.total, 0)
+    const images = await core.getMediaStream({ sessionId: ids[0], mediaType: 'image', beginTimestamp: day })
+    assert.equal(images.success, true, images.error)
+    assert.equal(images.items.length, 1)
+    assert.equal(images.items[0].imageMd5, imageMd5)
+    assert.equal((await core.getMediaStream({ sessionId: ids[0], mediaType: 'video' })).items.length, 0)
+    const allMedia = await core.getMediaStream({ mediaType: 'all' })
+    assert.deepEqual(allMedia.items.map(item => item.sessionId), [ids[1], ids[0]])
+    assert.equal(allMedia.items[0].videoMd5, videoMd5)
+    assert.equal((await core.getMediaStream({ mediaType: 'all', offset: 1 })).items[0].imageMd5, imageMd5)
+    assert.deepEqual((await core.getSnsUsernames()).usernames, [ids[0], 'wxid_synthetic_me'])
+    assert.deepEqual((await core.getSnsExportStats('wxid_synthetic_me')).data,
+      { totalPosts: 2, totalFriends: 2, myPosts: 1 })
+    assert.equal((await core.getSnsTimeline(1, 1)).timeline[0].id, '123456789123456789')
+    const moments = await core.getSnsTimeline(10, 0, [ids[0]], 'photo', day, day + 1)
+    assert.equal(moments.success, true, moments.error)
+    assert.equal(moments.timeline[0].contentDesc, 'Synthetic photo')
     const cursor = await core.openMessageCursor(ids[0], 1, true, 0, 0)
     assert.equal(cursor.success, true)
     assert.equal((await core.fetchMessageBatch(cursor.cursor)).rows[0].local_id, 1)
@@ -195,7 +235,7 @@ async function main() {
     assert.equal(rows[0].message_content, index === 0 ? '你好' : groupContent)
     if (index === 0) assert.deepEqual(fs.readFileSync(rows[1].media_path), media)
   }
-  console.log('Encrypted session/message reads, cursor, DAT decoding and two-session export manifests passed.')
+  console.log('Encrypted session/message reads, media scan, Moments, annual statistics, DAT decoding and export manifests passed.')
   await checkBuiltWorkers()
 }
 

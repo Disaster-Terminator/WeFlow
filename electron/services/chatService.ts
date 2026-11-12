@@ -12232,6 +12232,20 @@ class ChatService {
 
       privateSessionIds = await this.filterMyFootprintPrivateSessions(privateSessionIds)
 
+      if (!await wcdbService.supportsMyFootprintStats()) {
+        const fallback = await this.getMyFootprintStatsByCursorFallback({
+          begin,
+          end: normalizedEnd,
+          myAccountId,
+          privateSessionIds,
+          groupSessionIds,
+          mentionLimit: mentionLimit || Number.POSITIVE_INFINITY,
+          privateLimit
+        })
+        if (!fallback.success || !fallback.data) return fallback
+        return { success: true, data: await this.enrichMyFootprintData(fallback.data) }
+      }
+
       let data: MyFootprintData | null = null
       const effectivePrivateLimit = privateLimit
       // native 候选上限：0 表示不截断候选，确保前端 source 二次过滤有完整输入
@@ -13845,7 +13859,7 @@ class ChatService {
       const mentionScanLimit = Number.isFinite(params.mentionScanLimitPerGroup as number)
         ? Math.max(60, Math.floor(Number(params.mentionScanLimitPerGroup)))
         : Math.max(params.mentionLimit * 12, 4000)
-      const privateScanLimitPerSession = Math.max(
+      const privateScanLimitPerSession = params.privateLimit === 0 ? Number.POSITIVE_INFINITY : Math.max(
         120,
         Math.min(
           600,
@@ -14058,8 +14072,6 @@ class ChatService {
                 break
               }
               scanned += 1
-              const messageContentRaw = row.message_content ?? row.messageContent ?? row.content
-              if (!this.footprintMessageLikelyContainsAt(messageContentRaw)) continue
               const sourceRaw = row.source ?? row.msg_source ?? row.message_source
               let sourceMatched = false
               if (typeof sourceRaw === 'string') {
@@ -14077,6 +14089,11 @@ class ChatService {
                 sourceMatched = this.sourceAtUserListContainsWithIdentitySet(sourceRaw, mentionIdentitySet)
               }
               if (!sourceMatched) continue
+              const content = this.decodeMessageContent(
+                row.message_content ?? row.messageContent ?? row.content,
+                row.compress_content ?? row.compressContent
+              )
+              if (!this.footprintMessageLikelyContainsAt(content)) continue
               const normalizedSource = this.normalizeFootprintSourceForOutput(sourceRaw)
 
               let senderUsername = String(row.sender_username || row.senderUsername || '').trim()
@@ -14092,7 +14109,7 @@ class ChatService {
                 local_id: this.toSafeInt(row.local_id, 0),
                 create_time: this.toSafeInt(row.create_time, 0),
                 sender_username: senderUsername,
-                message_content: String(row.message_content || row.messageContent || ''),
+                message_content: content,
                 source: normalizedSource
               }
               mentions.push(mention)

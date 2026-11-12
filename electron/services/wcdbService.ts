@@ -614,6 +614,10 @@ export class WcdbService {
     return this.callWorker('getGroupStats', { chatroomId, beginTimestamp, endTimestamp })
   }
 
+  supportsMyFootprintStats(): Promise<boolean> {
+    return this.callWorker('supportsMyFootprintStats')
+  }
+
   async getMyFootprintStats(options: {
     beginTimestamp?: number
     endTimestamp?: number

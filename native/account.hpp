@@ -127,6 +127,14 @@ public:
     }
 };
 
+inline auto messageOrder(const Json& row) {
+    const auto number = [&row](const char* field) {
+        const auto value = row.find(field);
+        return value != row.end() && value->is_number_integer() ? value->get<int64_t>() : int64_t{0};
+    };
+    return std::tuple(number("create_time"), number("sort_seq"), number("local_id"));
+}
+
 class MessageCursor {
     struct Source {
         Query query;
@@ -135,14 +143,6 @@ class MessageCursor {
     std::vector<Source> sources;
     std::string accountId;
     bool ascending;
-
-    static auto order(const Json& row) {
-        const auto number = [&row](const char* field) {
-            const auto value = row.find(field);
-            return value != row.end() && value->is_number_integer() ? value->get<int64_t>() : int64_t{0};
-        };
-        return std::tuple(number("create_time"), number("sort_seq"), number("local_id"));
-    }
 
 public:
     MessageCursor(std::string account, bool forward) : accountId(std::move(account)), ascending(forward) {}
@@ -157,7 +157,7 @@ public:
     Json next() {
         if (!hasMore()) return nullptr;
         const auto selected = std::min_element(sources.begin(), sources.end(), [&](const Source& left, const Source& right) {
-            return ascending ? order(left.row) < order(right.row) : order(right.row) < order(left.row);
+            return ascending ? messageOrder(left.row) < messageOrder(right.row) : messageOrder(right.row) < messageOrder(left.row);
         });
         auto row = std::move(selected->row);
         selected->row = selected->query.next();
@@ -171,15 +171,18 @@ public:
 class Account {
     Database sessionDb;
     std::vector<Database> shards;
+    fs::path storage;
+    std::string key;
+    std::unique_ptr<Database> snsDb;
 
 public:
     std::string accountId;
 
-    Account(const fs::path& sessionFile, const std::string& key)
-        : sessionDb(sessionFile, key) {
+    Account(const fs::path& sessionFile, const std::string& databaseKey)
+        : sessionDb(sessionFile, databaseKey), key(databaseKey) {
         if (!sessionDb.hasTable("SessionTable")) throw std::runtime_error("SessionTable is missing");
         const auto sessionDir = sessionFile.parent_path();
-        const auto storage = sessionDir.filename() == "session" ? sessionDir.parent_path() : sessionDir;
+        storage = sessionDir.filename() == "session" ? sessionDir.parent_path() : sessionDir;
         const auto messageDir = storage / "message";
         if (!fs::is_directory(messageDir)) return;
         std::vector<fs::path> files;
@@ -196,7 +199,7 @@ public:
 
     Json sessions() const { return sessionDb.query("SELECT * FROM SessionTable"); }
 
-    MessageCursor cursor(const std::string& session, bool ascending, int begin = 0, int end = 0) const {
+    MessageCursor cursor(const std::string& session, bool ascending, int begin = 0, int end = 0, int mediaType = -1) const {
         if (shards.empty()) throw std::runtime_error("No message database found");
         const auto table = sessionTable(session);
         MessageCursor result(accountId, ascending);
@@ -210,11 +213,47 @@ public:
             sql += " WHERE 1=1";
             if (begin > 0) sql += " AND m.create_time >= " + std::to_string(begin);
             if (end > 0) sql += " AND m.create_time <= " + std::to_string(end);
+            if (mediaType == 0) sql += " AND m.local_type IN (3,43)";
+            if (mediaType == 1) sql += " AND m.local_type = 3";
+            if (mediaType == 2) sql += " AND m.local_type = 43";
             const std::string direction = ascending ? " ASC" : " DESC";
             sql += " ORDER BY m.create_time" + direction + ", m.sort_seq" + direction + ", m.local_id" + direction;
             result.add(shard.prepare(sql));
         }
         return result;
+    }
+
+    Json dailyCounts(const std::string& session, int begin = 0, int end = 0) const {
+        if (shards.empty()) throw std::runtime_error("No message database found");
+        const auto table = sessionTable(session);
+        Json result = Json::array();
+        for (const auto& shard : shards) {
+            if (!shard.hasTable(table)) continue;
+            const bool senderMap = shard.hasTable("Name2Id");
+            std::string sql = "SELECT date(m.create_time, 'unixepoch', 'localtime') AS day, ";
+            sql += senderMap ? "COALESCE(n.user_name = ?,0)" : "0";
+            sql += " AS sent, count(*) AS total FROM " + table + " AS m";
+            if (senderMap) sql += " LEFT JOIN Name2Id AS n ON m.real_sender_id=n.rowid";
+            sql += " WHERE m.create_time > 0";
+            if (begin > 0) sql += " AND m.create_time >= " + std::to_string(begin);
+            if (end > 0) sql += " AND m.create_time <= " + std::to_string(end);
+            sql += " GROUP BY day, sent";
+            for (auto& row : shard.query(sql, senderMap ? &accountId : nullptr)) {
+                if (row["day"].is_string()) result.push_back(std::move(row));
+            }
+        }
+        return result;
+    }
+
+    const Database& moments() {
+        if (!snsDb) {
+            const auto nested = storage / "sns" / "sns.db";
+            const auto file = fs::is_regular_file(nested) ? nested : storage / "sns.db";
+            auto database = std::make_unique<Database>(file, key);
+            if (!database->hasTable("SnsTimeLine")) throw std::runtime_error("SnsTimeLine is missing");
+            snsDb = std::move(database);
+        }
+        return *snsDb;
     }
 
     int64_t count(const std::string& session) const {

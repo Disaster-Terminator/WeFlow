@@ -1,4 +1,7 @@
-param([switch]$TestTools)
+param(
+    [switch]$TestTools,
+    [string]$WslDistro = $env:WEFLOW_MINGW_WSL_DISTRO
+)
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
@@ -6,7 +9,6 @@ $PSNativeCommandUseErrorActionPreference = $true
 $root = Split-Path -Parent $PSScriptRoot
 $work = Join-Path $root 'out/native'
 $destination = Join-Path $root 'resources/native/win32-x64'
-$source = Join-Path $root 'native'
 New-Item -ItemType Directory -Force $work, $destination | Out-Null
 
 function Get-Source($name, $url, $sha256) {
@@ -31,18 +33,34 @@ Get-Source 'node_api_types.h' "$node/node_api_types.h" '088766B3CF1F0CD9B292C361
 Get-Source 'js_native_api.h' "$node/js_native_api.h" 'FEC72E29A59EF5FA49129EFF141F3A0CE0F0CB3E628B0695F8E711DCCB4FDB9A' | Out-Null
 Get-Source 'js_native_api_types.h' "$node/js_native_api_types.h" '4DBE2545FFF0B2EA19E48021EF2E146666A6CB9B2264E9CB720A96DE31FEEB9F' | Out-Null
 
-if ((gcc -dumpmachine) -ne 'x86_64-w64-mingw32') { throw 'An x64 MinGW-w64 GCC toolchain is required.' }
-$object = Join-Path $work 'sqlite3mc.o'
-gcc -O2 -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION -c (Join-Path $sqlite 'sqlite3mc_amalgamation.c') -o $object
-if ($LASTEXITCODE -ne 0) { throw 'SQLite3 Multiple Ciphers compilation failed' }
+function Invoke-Mingw([string]$Compiler, [string[]]$Arguments) {
+    if ($WslDistro) {
+        & wsl.exe -d $WslDistro --cd $root -- "x86_64-w64-mingw32-$Compiler" @Arguments
+    } else {
+        & $Compiler @Arguments
+    }
+    if ($LASTEXITCODE -ne 0) { throw "$Compiler exited with status $LASTEXITCODE" }
+}
 
-$flags = @('-std=c++17', '-O2', '-static', '-I', $work, '-I', $sqlite)
-g++ @flags -shared (Join-Path $source 'wcdb.cpp') $object -lbcrypt -o (Join-Path $destination 'wcdb.dll')
-if ($LASTEXITCODE -ne 0) { throw 'WCDB DLL compilation failed' }
-g++ @flags -shared (Join-Path $source 'image_addon.cpp') -lbcrypt -o (Join-Path $destination 'image-decrypt.node')
-if ($LASTEXITCODE -ne 0) { throw 'Image addon compilation failed' }
-g++ @flags (Join-Path $source 'welive.cpp') $object -lbcrypt -o (Join-Path $destination 'welive.exe')
-if ($LASTEXITCODE -ne 0) { throw 'WeLive compilation failed' }
+Push-Location -LiteralPath $root
+try {
+    if ((Invoke-Mingw gcc @('-dumpmachine')) -ne 'x86_64-w64-mingw32') {
+        throw 'An x64 MinGW-w64 GCC toolchain is required.'
+    }
+    $object = 'out/native/sqlite3mc.o'
+    Invoke-Mingw gcc @('-O2', '-DSQLITE_THREADSAFE=1', '-DSQLITE_OMIT_LOAD_EXTENSION',
+        '-c', 'out/native/sqlite3mc/sqlite3mc_amalgamation.c', '-o', $object)
+    $flags = @('-std=c++17', '-O2', '-static', '-I', 'out/native', '-I', 'out/native/sqlite3mc')
+    Invoke-Mingw g++ ($flags + @('-shared', 'native/wcdb.cpp', $object, '-lbcrypt', '-o', 'resources/native/win32-x64/wcdb.dll'))
+    Invoke-Mingw g++ ($flags + @('-shared', 'native/image_addon.cpp', '-lbcrypt', '-o', 'resources/native/win32-x64/image-decrypt.node'))
+    Invoke-Mingw g++ ($flags + @('native/welive.cpp', $object, '-lbcrypt', '-o', 'resources/native/win32-x64/welive.exe'))
+    if ($TestTools) {
+        Invoke-Mingw gcc @('-O1', '-DSQLITE_OMIT_LOAD_EXTENSION', '-I', 'out/native/sqlite3mc',
+            'out/native/sqlite3mc/shell3mc_amalgamation.c', $object, '-o', 'out/native/sqlite3mc.exe')
+    }
+} finally {
+    Pop-Location
+}
 
 $licenses = @(
     @('SQLite3MultipleCiphers-LICENSE.txt', 'https://raw.githubusercontent.com/utelle/SQLite3MultipleCiphers/v2.5.1/LICENSE', '39205EC18E0F25F56C62D3BDA9768E7509B63A74BA58BEB7442903DFC81C247A'),
@@ -52,9 +70,4 @@ $licenses = @(
 foreach ($license in $licenses) {
     $file = Get-Source @license
     Copy-Item -LiteralPath $file -Destination $destination
-}
-
-if ($TestTools) {
-    gcc -O1 -DSQLITE_OMIT_LOAD_EXTENSION -I $sqlite (Join-Path $sqlite 'shell3mc_amalgamation.c') $object -o (Join-Path $work 'sqlite3mc.exe')
-    if ($LASTEXITCODE -ne 0) { throw 'SQLite fixture shell compilation failed' }
 }

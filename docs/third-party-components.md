@@ -9,6 +9,8 @@ npm run build:windows
 ```
 
 构建脚本校验源码依赖的 SHA-256，然后将三个组件编译到 `resources/native/win32-x64`。
+也可以在 WSL 中安装 x64 MinGW-w64 交叉工具链，然后设置 `WEFLOW_MINGW_WSL_DISTRO` 为该发行版的名称。
+Node.js、Electron 打包和运行验证仍在 Windows 上执行。
 
 在安装了 Node.js 24 的 Windows x64 环境中，可以运行以下命令，生成合成 SQLCipher 数据并验证读取、
 图片解密和批量导出清单。
@@ -22,6 +24,9 @@ node scripts/check-windows-components.cjs
 读取加密数据需要用户填写已有的密钥。密钥获取工具需单独配置。
 
 内置 DLL 提供只读会话、消息、计数和消息游标，支持 SQLite 和使用 32 字节原始密钥的 SQLCipher 4。
+资源页扫描消息库中的图片和视频记录。年度报告从各消息分库读取日期统计，再通过游标生成扩展分析。
+我的足迹可用消息游标统计私聊往来和群聊提及。朋友圈读取 `sns/sns.db` 的 `SnsTimeLine`，
+支持 XML 正文、作者、时间及关键词筛选。
 内置插件支持 XOR 和分段 AES/XOR DAT 图片。WeLive 生成原始 JSONL 及其行数、字节数和媒体失败计数，
 从账号媒体目录和表情缓存复制可定位的媒体，并解密 DAT 图片。具体能力取决于数据库结构和本地文件的完整性。
 
