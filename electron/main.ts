@@ -4046,6 +4046,15 @@ function registerIpcHandlers() {
     return snsService.proxyImage(url, key)
   })
 
+  ipcMain.handle('sns:previewImage', async (_, payload: { url: string; key?: string | number }) => {
+    const result = await snsService.downloadImage(payload.url, payload.key)
+    if (!result.success || !result.cachePath || !result.contentType?.startsWith('image/') || !existsSync(result.cachePath)) {
+      return { success: false }
+    }
+    const { pathToFileURL } = await import('node:url')
+    return { success: true, src: pathToFileURL(result.cachePath).href }
+  })
+
   ipcMain.handle('sns:downloadImage', async (_, payload: { url: string; key?: string | number }) => {
     try {
       const { url, key } = payload

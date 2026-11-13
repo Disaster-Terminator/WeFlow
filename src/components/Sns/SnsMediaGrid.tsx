@@ -242,15 +242,15 @@ const MediaItem = ({ media, postType, onPreview, onMediaDeleted }: { media: SnsM
                 onPreview(videoPath, true, undefined)
             }
         } else {
-            if (media.url && media.url !== targetUrl) {
+            if (media.url) {
                 setIsDecrypting(true)
                 try {
-                    const result = await window.electronAPI.sns.proxyImage({
+                    const result = await window.electronAPI.sns.previewImage({
                         url: media.url,
                         key: skipDecrypt ? undefined : media.key
                     })
-                    if (result.success && result.dataUrl) {
-                        onPreview(result.dataUrl, false, liveVideoPath)
+                    if (result.success && result.src) {
+                        onPreview(result.src, false, liveVideoPath)
                         return
                     }
                 } catch {
