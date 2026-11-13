@@ -602,7 +602,7 @@ export default function SnsPage() {
     const ensureSnsCacheScopeKey = useCallback(async () => {
         if (cacheScopeKeyRef.current) return cacheScopeKeyRef.current
         const accountId = (await configService.getMyAccountId())?.trim() || SNS_PAGE_CACHE_SCOPE_FALLBACK
-        const scopeKey = `sns_page:${accountId}`
+        const scopeKey = `sns_page:v2:${accountId}`
         cacheScopeKeyRef.current = scopeKey
         return scopeKey
     }, [])

@@ -242,7 +242,24 @@ const MediaItem = ({ media, postType, onPreview, onMediaDeleted }: { media: SnsM
                 onPreview(videoPath, true, undefined)
             }
         } else {
-            onPreview(thumbSrc || targetUrl, false, liveVideoPath)
+            if (media.url && media.url !== targetUrl) {
+                setIsDecrypting(true)
+                try {
+                    const result = await window.electronAPI.sns.proxyImage({
+                        url: media.url,
+                        key: skipDecrypt ? undefined : media.key
+                    })
+                    if (result.success && result.dataUrl) {
+                        onPreview(result.dataUrl, false, liveVideoPath)
+                        return
+                    }
+                } catch {
+                    // Use the loaded thumbnail if the original is unavailable.
+                } finally {
+                    setIsDecrypting(false)
+                }
+            }
+            if (thumbSrc) onPreview(thumbSrc, false, liveVideoPath)
         }
     }
 

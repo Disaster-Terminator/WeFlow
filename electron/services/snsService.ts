@@ -129,11 +129,15 @@ const fixSnsUrl = (url: string, token?: string, isVideo: boolean = false) => {
 
     let fixedUrl = url.replace('http://', 'https://')
 
-    // 只有非视频（即图片）才需要处理路径末尾的尺寸标识（/150、/200等）变为 /0
-    if (!isVideo) {
-        const [pathPart, queryPart] = fixedUrl.split('?')
-        const fixedPath = pathPart.replace(/\/(150|200|480)($|\?)/, '/0$2')
-        fixedUrl = queryPart ? `${fixedPath}?${queryPart}` : fixedPath
+    // Image signatures can be bound to the original size path and query.
+    if (!isVideo && token) {
+        const hashAt = fixedUrl.indexOf('#')
+        const request = hashAt < 0 ? fixedUrl : fixedUrl.slice(0, hashAt)
+        const hash = hashAt < 0 ? '' : fixedUrl.slice(hashAt)
+        if (/[?&]token=/i.test(request)) return fixedUrl
+        const connector = request.endsWith('?') || request.endsWith('&') ? '' : request.includes('?') ? '&' : '?'
+        const index = /[?&]idx=/i.test(request) ? '' : '&idx=1'
+        return `${request}${connector}token=${token}${index}${hash}`
     }
 
     // 如果没有提供新token，直接返回
@@ -733,9 +737,9 @@ class SnsService {
             let mediaMatch: RegExpExecArray | null
             while ((mediaMatch = mediaRegex.exec(xml)) !== null) {
                 const mx = mediaMatch[1]
-                const urlMatch = mx.match(/<url[^>]*>([^<]+)<\/url>/i)
+                const urlMatch = mx.match(/<url\b[^>]*>([\s\S]*?)<\/url>/i)
                 const urlTagMatch = mx.match(/<url([^>]*)>/i)
-                const thumbMatch = mx.match(/<thumb[^>]*>([^<]+)<\/thumb>/i)
+                const thumbMatch = mx.match(/<thumb\b[^>]*>([\s\S]*?)<\/thumb>/i)
                 const thumbTagMatch = mx.match(/<thumb([^>]*)>/i)
 
                 let urlToken: string | undefined, urlKey: string | undefined
@@ -756,8 +760,8 @@ class SnsService {
                 }
 
                 const item: SnsMedia = {
-                    url: urlMatch ? urlMatch[1].trim() : '',
-                    thumb: thumbMatch ? thumbMatch[1].trim() : '',
+                    url: decodeXmlText(urlMatch?.[1] || '').trim(),
+                    thumb: decodeXmlText(thumbMatch?.[1] || '').trim(),
                     token: urlToken || thumbToken,
                     thumbToken: thumbToken,
                     key: urlKey || thumbKey,
