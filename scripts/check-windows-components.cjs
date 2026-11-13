@@ -12,7 +12,9 @@ const root = path.resolve(__dirname, '..')
 const resources = path.resolve(process.argv[2] || path.join(root, 'resources'))
 const native = path.join(resources, 'native', 'win32-x64')
 const shell = path.join(root, 'out', 'native', 'sqlite3mc.exe')
-const key = 'd1'.repeat(32)
+const binaryPassphrase = process.env.WEFLOW_TEST_BINARY_PASSPHRASE === '1'
+const passphrase = 'synthetic-database-passphrase-01'
+const key = binaryPassphrase ? Buffer.from(passphrase).toString('hex') : 'd1'.repeat(32)
 const aesKey = '0123456789abcdef'
 const xorKey = 0xb4
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'weflow-native-'))
@@ -34,7 +36,7 @@ const groupContent = zstdCompressSync(Buffer.from('@Synthetic Group message')).t
 function sqlite(file, sql) {
   const result = spawnSync(shell, [path.basename(file)], {
     cwd: path.dirname(file),
-    input: `PRAGMA cipher=sqlcipher; PRAGMA legacy=4; PRAGMA key="x'${key}'";${sql}`,
+    input: `PRAGMA cipher=sqlcipher; PRAGMA legacy=4; PRAGMA key="${binaryPassphrase ? passphrase : `x'${key}'`}";${sql}`,
     encoding: 'utf8'
   })
   assert.equal(result.status, 0, result.stderr || result.error?.message)

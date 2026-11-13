@@ -93,22 +93,36 @@ class Database {
 
 public:
     Database(const fs::path& file, const std::string& key) {
-        sqlite3* opened = nullptr;
-        const auto result = sqlite3_open_v2(file.u8string().c_str(), &opened,
-            SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nullptr);
-        db.reset(opened);
-        if (result != SQLITE_OK) throw std::runtime_error("Cannot open database");
-        sqlite3_db_config(db.get(), SQLITE_DBCONFIG_TRUSTED_SCHEMA, 0, nullptr);
-        if (sqlite3_exec(db.get(), "SELECT count(*) FROM sqlite_schema", nullptr, nullptr, nullptr) == SQLITE_OK)
-            return;
+        const auto open = [&] {
+            db.reset();
+            sqlite3* opened = nullptr;
+            const auto result = sqlite3_open_v2(file.u8string().c_str(), &opened,
+                SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nullptr);
+            db.reset(opened);
+            if (result != SQLITE_OK) throw std::runtime_error("Cannot open database");
+            sqlite3_db_config(db.get(), SQLITE_DBCONFIG_TRUSTED_SCHEMA, 0, nullptr);
+        };
+        const auto readable = [&] {
+            return sqlite3_exec(db.get(), "SELECT count(*) FROM sqlite_schema", nullptr, nullptr, nullptr) == SQLITE_OK;
+        };
+        open();
+        if (readable()) return;
 
         if (key.size() != 64 || key.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
             throw std::runtime_error("Encrypted database requires a 32-byte hexadecimal key");
-        const std::string rawKey = "x'" + key + "'";
-        if (sqlite3_exec(db.get(), "PRAGMA cipher=sqlcipher; PRAGMA legacy=4", nullptr, nullptr, nullptr) != SQLITE_OK ||
-            sqlite3_key(db.get(), rawKey.data(), static_cast<int>(rawKey.size())) != SQLITE_OK ||
-            sqlite3_exec(db.get(), "SELECT count(*) FROM sqlite_schema", nullptr, nullptr, nullptr) != SQLITE_OK)
-            throw std::runtime_error("Cannot read SQLCipher database with supplied key");
+        const auto tryKey = [&](const std::string& candidate) {
+            open();
+            return sqlite3_exec(db.get(), "PRAGMA cipher=sqlcipher; PRAGMA legacy=4", nullptr, nullptr, nullptr) == SQLITE_OK &&
+                sqlite3_key(db.get(), candidate.data(), static_cast<int>(candidate.size())) == SQLITE_OK && readable();
+        };
+        if (tryKey("x'" + key + "'")) return;
+
+        // Some accounts store a binary passphrase, which SQLCipher derives separately for each file.
+        std::string passphrase;
+        passphrase.reserve(32);
+        for (size_t i = 0; i < key.size(); i += 2)
+            passphrase.push_back(static_cast<char>(std::stoi(key.substr(i, 2), nullptr, 16)));
+        if (!tryKey(passphrase)) throw std::runtime_error("Cannot read SQLCipher database with supplied key");
     }
 
     Query prepare(const std::string& sql, const std::string* parameter = nullptr) const {
